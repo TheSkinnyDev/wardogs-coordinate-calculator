@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coordinate Calculator</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10151f;color:#eaf0fb}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}main{width:min(100%,620px)}h1{font-size:30px;margin:8px 0}p{color:#9baac0;line-height:1.6}.eyebrow{color:#88d9be;letter-spacing:2px;font-size:12px;font-weight:700}.card{background:#192231;border:1px solid #303c50;border-radius:20px;padding:26px;margin-top:24px}label{display:block;font-size:14px;font-weight:600;margin-bottom:9px}input,select{width:100%;border:1px solid #435269;border-radius:10px;background:#111927;color:#eef4ff;padding:13px;font:inherit}input:focus,select:focus{outline:2px solid #88d9be;outline-offset:2px}.field{margin-bottom:21px}.result{background:#112c29;border:1px solid #32665b;border-radius:14px;padding:24px;text-align:center;margin:20px 0}.result output{display:block;font-weight:750;font-size:clamp(28px,7vw,46px);letter-spacing:-1px;white-space:pre-line;font-size:clamp(24px,5.5vw,36px)}.result small{display:block;color:#a6c7be;margin-top:8px}button{border:1px solid #435269;background:#253247;color:#edf4ff;padding:11px 16px;border-radius:9px;font:inherit;cursor:pointer}button:hover{background:#344862}button:disabled{opacity:.5;cursor:default}.buttons{display:flex;gap:10px;flex-wrap:wrap}details{margin-top:25px}summary{cursor:pointer;color:#adbad0;font-size:14px}.settings{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}.note{font-size:12px;margin-bottom:0}.error{color:#ffbdaf;font-size:14px;min-height:20px;margin:0}#status{font-size:13px;color:#88d9be;align-self:center}@media(max-width:480px){.card{padding:20px}.settings{grid-template-columns:1fr}}
+</style>
+<main>
+<div class="eyebrow">POINT TO POINT</div>
+<h1>Coordinate Calculator</h1>
+<p>Paste your position and a target. Get the straight-line range and direction instantly.</p>
+<div class="card">
+<div class="field"><label for="origin">Your position</label><input id="origin" type="text" placeholder="x97.36, y109.56" value="x97.36, y109.56" spellcheck="false" autocomplete="off"></div>
+<div class="field"><label for="target">Target position</label><input id="target" type="text" placeholder="x95.25, y108.02" value="x95.25, y108.02" spellcheck="false" autocomplete="off"></div>
+<p class="error" id="error" role="status"></p>
+<div class="result" aria-live="polite"><output id="result">—</output><small id="bearing">Enter both coordinates</small></div>
+<div class="buttons"><button id="copy" type="button">Copy result</button><button id="swap" type="button">Swap positions</button><span id="status" role="status"></span></div>
+<details><summary>Map settings</summary><div class="settings">
+<div><label for="scale">Metres per coordinate unit</label><input id="scale" type="number" min="0" step="any" value="100"></div>
+<div><label for="north">North is toward</label><select id="north"><option value="1">Higher Y values</option><option value="-1">Lower Y values</option></select></div>
+</div><p class="note">X increases eastward. These are flat map coordinates, not latitude and longitude. Default scale: 1 coordinate unit = 100 metres. Ranges are always shown in metres, rounded to the nearest metre.</p></details>
+</div><p class="note">Works offline · No installation · Eight compass directions</p>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+function parseCoordinate(text) {
+  const cleaned = text.trim().replace(/^["'“”]|["'“”]$/g, '').trim();
+  const match = cleaned.match(/^x\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*y\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+))$/i);
+  if (!match) return null;
+  const point = {x:Number(match[1]), y:Number(match[2])};
+  return Number.isFinite(point.x) && Number.isFinite(point.y) ? point : null;
+}
+function calculate(a,b,scale,north) {
+  const dx=b.x-a.x, dy=(b.y-a.y)*north;
+  const distance=Math.hypot(dx,dy)*scale;
+  if (!Number.isFinite(distance)) throw new Error('Coordinates or scale are too large.');
+  if (dx===0 && dy===0) return {distance:0,direction:null,bearing:null};
+  const bearing=(Math.atan2(dx,dy)*180/Math.PI+360)%360;
+  return {distance,direction:['N','NE','E','SE','S','SW','W','NW'][Math.round(bearing/45)%8],bearing};
+}
+let copyText='';
+function update() {
+  $('status').textContent=''; $('error').textContent=''; copyText=''; $('copy').disabled=true;
+  const a=parseCoordinate($('origin').value), b=parseCoordinate($('target').value), scale=Number($('scale').value);
+  let error='';
+  if (!a || !b) error='Use x97.36, y109.56 for '+(!a?'your position.':'the target position.');
+  else if (!Number.isFinite(scale) || scale<=0) error='Enter a scale greater than zero.';
+  if (error) { $('error').textContent=error; $('result').textContent='—'; $('bearing').textContent='Waiting for valid coordinates'; return; }
+  try {
+    const r=calculate(a,b,scale,Number($('north').value));
+    const range=r.distance>0 && r.distance<0.5 ? '<1' : String(Math.round(r.distance));
+    copyText='RANGE '+range+' M\nHEADING '+(r.direction ? (Math.round(r.bearing)%360)+' '+r.direction : '—');
+    $('result').textContent=copyText;
+    $('bearing').textContent=r.direction ? 'From your position to the target' : 'Same position · no direction';
+    $('copy').disabled=false;
+  } catch(e) { $('error').textContent=e.message; $('result').textContent='—'; $('bearing').textContent='Check your values'; }
+}
+for(const id of ['origin','target','scale','north']) $(id).addEventListener('input',update);
+$('swap').addEventListener('click',()=>{const temp=$('origin').value;$('origin').value=$('target').value;$('target').value=temp;update();});
+$('copy').addEventListener('click',async()=>{
+  try {await navigator.clipboard.writeText(copyText);$('status').textContent='Copied!';}
+  catch {const area=document.createElement('textarea');area.value=copyText;document.body.append(area);area.select();const ok=document.execCommand('copy');area.remove();$('status').textContent=ok?'Copied!':'Select the result to copy it.';}
+});
+update();
+</script>
+</html>
